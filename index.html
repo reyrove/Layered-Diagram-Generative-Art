@@ -86,6 +86,7 @@
     .cover-sub { font-family: var(--serif); font-size: clamp(1.3rem, 1.9vw, 1.7rem); font-weight: 300; font-style: italic; line-height: 1.4; color: var(--text-dim); max-width: 500px; }
     .cover-desc { color: var(--text-dim); font-size: 13px; line-height: 1.8; max-width: 460px; }
     .cover-art { position: relative; aspect-ratio: 1; background: #000; border: 1px solid var(--line); overflow: hidden; max-width: 520px; margin-left: auto; width: 100%; }
+    
     .canvas-slot { position: absolute; inset: 0; overflow: hidden; }
     .canvas-slot canvas {
       display: block !important;
@@ -94,6 +95,7 @@
       width: 100% !important; height: 100% !important;
       max-width: 100% !important; max-height: 100% !important;
     }
+    
     .cover-foot { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; padding-top: 32px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-faint); }
     .cover-foot .k { display: block; color: var(--gold-soft); margin-bottom: 8px; }
     .cover-foot .v { color: var(--text-dim); letter-spacing: 0.1em; line-height: 1.7; }
@@ -705,19 +707,6 @@
 <script>
 // ============================================================
 // LAYERED DIAGRAM — GENERATIVE LINEWORK COMPOSITIONS
-//
-// Same seed → many surfaces:
-//   • Cover, Plate, Frame — same seed
-//   • All 4 surfaces (Print, Scarf, Textile, Wall) — same seed
-//   • Archive — 8 unique seeds
-//
-// Rectangular surfaces tile the square composition to fill.
-//
-// Generative engine (preserved from source):
-//   • Layer 1: grid at 2.5% spacing
-//   • Layer 2: 6–8 organic random-walk curves
-//   • Layer 3: 3–5 concentric circle sets
-//   • Black on white; heavy border at 5% margin
 // ============================================================
 
 const prefix = 'Layered-Diagram';
@@ -735,13 +724,9 @@ class SeededRandom {
 
 // ============================================================
 // SKETCH FACTORY
-// tile: { cols, rows } — repeat the square composition N times
 // ============================================================
-function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
+function makeSketch({ slotId, seedValue, isMaster, maxFrames }) {
   const stopAfter = maxFrames || Infinity;
-  const tileCols = (tile && tile.cols) || 1;
-  const tileRows = (tile && tile.rows) || 1;
-
   let canvasW = 0;
   let canvasH = 0;
   let frameCount = 0;
@@ -796,63 +781,48 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
         return;
       }
 
-      // Tile composition
-      const tileW = canvasW / tileCols;
-      const tileH = canvasH / tileRows;
-      const tileSize = Math.min(tileW, tileH);
-
-      for (let ty = 0; ty < tileRows; ty++) {
-        for (let tx = 0; tx < tileCols; tx++) {
-          const ox = tx * tileW + (tileW - tileSize) / 2;
-          const oy = ty * tileH + (tileH - tileSize) / 2;
-
-          p.push();
-          p.translate(ox, oy);
-          drawComposition(p, tileSize, seedValue);
-          p.pop();
-        }
-      }
-
+      // Directly draw the composition to fill the entire canvas exactly
+      drawComposition(p, canvasW, canvasH, seedValue);
       frameCount++;
     };
   };
 
-  // ---- Draw the layered-diagram composition into a square of side `size` ----
-  function drawComposition(p, size, seedValue) {
+  // ---- Draw the layered-diagram composition to fill the canvas ----
+  function drawComposition(p, w, h, seedValue) {
     const sr = new SeededRandom(seedValue);
-    const cs = size;
-    const margin = cs * 0.05;
+    const margin = Math.min(w, h) * 0.05;
+    const maxDim = Math.max(w, h);
 
     p.background(255);
     p.stroke(0);
-    p.strokeWeight(cs * 0.001);
+    p.strokeWeight(maxDim * 0.001);
     p.noFill();
 
     // ---- Layer 1: Grid ----
-    const gridSpacing = cs * 0.025;
-    for (let x = margin; x <= cs - margin; x += gridSpacing) {
-      p.line(x, margin, x, cs - margin);
+    const gridSpacing = maxDim * 0.025;
+    for (let x = margin; x <= w - margin; x += gridSpacing) {
+      p.line(x, margin, x, h - margin);
     }
-    for (let y = margin; y <= cs - margin; y += gridSpacing) {
-      p.line(margin, y, cs - margin, y);
+    for (let y = margin; y <= h - margin; y += gridSpacing) {
+      p.line(margin, y, w - margin, y);
     }
 
     // ---- Layer 2: Organic curves (random walk) ----
     const curveCount = sr.int(6, 8);
     for (let i = 0; i < curveCount; i++) {
-      let startX = sr.range(margin, cs - margin);
-      let startY = sr.range(margin, cs - margin);
+      let startX = sr.range(margin, w - margin);
+      let startY = sr.range(margin, h - margin);
       let currentAngle = sr.rand() * Math.PI * 2;
 
       const points = [];
       for (let t = 0; t < 100; t++) {
         currentAngle += sr.range(-0.5, 0.5);
-        const radius = sr.range(cs * 0.003, cs * 0.008);
+        const radius = sr.range(maxDim * 0.003, maxDim * 0.008);
         let x = startX + Math.cos(currentAngle) * radius;
         let y = startY + Math.sin(currentAngle) * radius;
 
-        x = Math.max(margin, Math.min(cs - margin, x));
-        y = Math.max(margin, Math.min(cs - margin, y));
+        x = Math.max(margin, Math.min(w - margin, x));
+        y = Math.max(margin, Math.min(h - margin, y));
 
         points.push([x, y]);
         startX = x;
@@ -867,13 +837,13 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
     // ---- Layer 3: Concentric circles ----
     const circleCount = sr.int(3, 5);
     for (let i = 0; i < circleCount; i++) {
-      const centerX = sr.range(margin * 2, cs - margin * 2);
-      const centerY = sr.range(margin * 2, cs - margin * 2);
+      const centerX = sr.range(margin * 2, w - margin * 2);
+      const centerY = sr.range(margin * 2, h - margin * 2);
       const maxRadius = Math.min(
         centerX - margin,
         centerY - margin,
-        cs - margin - centerX,
-        cs - margin - centerY
+        w - margin - centerX,
+        h - margin - centerY
       );
 
       const concentricCount = sr.int(3, 5);
@@ -884,7 +854,7 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
         const points = [];
         const steps = 60;
         for (let a = 0; a <= Math.PI * 2; a += Math.PI * 2 / steps) {
-          const variance = sr.range(-cs * 0.0015, cs * 0.0015);
+          const variance = sr.range(-maxDim * 0.0015, maxDim * 0.0015);
           const x = centerX + Math.cos(a) * (r + variance);
           const y = centerY + Math.sin(a) * (r + variance);
           points.push([x, y]);
@@ -898,8 +868,8 @@ function makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }) {
     }
 
     // ---- Border ----
-    p.strokeWeight(cs * 0.002);
-    p.rect(margin, margin, cs - margin * 2, cs - margin * 2);
+    p.strokeWeight(maxDim * 0.002);
+    p.rect(margin, margin, w - margin * 2, h - margin * 2);
   }
 }
 
@@ -950,10 +920,10 @@ function attachVisibilityObserver(p5Instance, element) {
   obs.observe(element);
 }
 
-function createLiveP5({ slotId, seedValue, isMaster, maxFrames, tile, onCreated }) {
+function createLiveP5({ slotId, seedValue, isMaster, maxFrames, onCreated }) {
   whenSlotReady(slotId, (slot) => {
     slot.querySelectorAll('canvas').forEach(c => c.remove());
-    const inst = new p5(makeSketch({ slotId, seedValue, isMaster, maxFrames, tile }), slot);
+    const inst = new p5(makeSketch({ slotId, seedValue, isMaster, maxFrames }), slot);
     inst._frozen = false;
     attachVisibilityObserver(inst, slot);
     if (onCreated) onCreated(inst);
@@ -969,7 +939,6 @@ function drawPlate() {
     seedValue: seed,
     isMaster: true,
     maxFrames: 2,
-    tile: { cols: 1, rows: 1 },
     onCreated: (inst) => { plateP5 = inst; }
   });
 }
@@ -983,7 +952,6 @@ function drawCover() {
     seedValue: seed,
     isMaster: false,
     maxFrames: 2,
-    tile: { cols: 1, rows: 1 },
     onCreated: (inst) => { coverP5 = inst; }
   });
 }
@@ -997,19 +965,18 @@ function drawFramedPlate() {
     seedValue: seed,
     isMaster: false,
     maxFrames: 2,
-    tile: { cols: 1, rows: 1 },
     onCreated: (inst) => { frameP5 = inst; }
   });
 }
 
 // ============================================================
-// SURFACES — same seed as plate, tiled to fill aspect ratio
+// SURFACES — same seed as plate, scaled to fill aspect ratio
 // ============================================================
 const surfaceDefs = [
-  { id: 'surfacePrint',   wrapId: 'wrap-surfacePrint',   tile: { cols: 1, rows: 1 } },
-  { id: 'surfaceScarf',   wrapId: 'wrap-surfaceScarf',   tile: { cols: 3, rows: 1 } },
-  { id: 'surfaceTextile', wrapId: 'wrap-surfaceTextile', tile: { cols: 2, rows: 2 } },
-  { id: 'surfaceWall',    wrapId: 'wrap-surfaceWall',    tile: { cols: 1, rows: 2 } }
+  { id: 'surfacePrint',   wrapId: 'wrap-surfacePrint' },
+  { id: 'surfaceScarf',   wrapId: 'wrap-surfaceScarf' },
+  { id: 'surfaceTextile', wrapId: 'wrap-surfaceTextile' },
+  { id: 'surfaceWall',    wrapId: 'wrap-surfaceWall' }
 ];
 
 function drawSurfaces() {
@@ -1038,8 +1005,7 @@ function drawSurfaces() {
           slotId: slot.id || (slot.id = def.id + '-slot'),
           seedValue: seed,
           isMaster: false,
-          maxFrames: 2,
-          tile: def.tile
+          maxFrames: 2
         }),
         slot
       );
@@ -1114,8 +1080,7 @@ function drawArchive() {
           slotId: 'archive-slot-' + i,
           seedValue: archiveSeeds[i],
           isMaster: false,
-          maxFrames: 2,
-          tile: { cols: 1, rows: 1 }
+          maxFrames: 2
         }),
         slot
       );
